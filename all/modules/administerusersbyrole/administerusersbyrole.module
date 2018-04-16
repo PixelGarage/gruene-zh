@@ -21,7 +21,7 @@ function administerusersbyrole_permission() {
   $perms = array();
   $perms['create users'] = array('title' => 'Create new users');
   $perms['access users overview'] = array('title' => 'Access the users overview page');
-   
+
   foreach ($roles as $rid => $role) {
     if ($rid == $admin_rid) {
       continue;
@@ -39,48 +39,73 @@ function administerusersbyrole_permission() {
  * Implements hook_menu_alter().
  */
 function administerusersbyrole_menu_alter(&$items) {
-  $items['user/%user']['access callback'] = '_administerusersbyrole_can_view_user';
-  $items['user/%user']['access arguments'] = array(1);
-  $items['user/%user/edit']['access callback'] = '_administerusersbyrole_can_edit_user';
-  $items['user/%user/edit']['access arguments'] = array(1);
-  $items['user/%user/cancel']['access callback'] = '_administerusersbyrole_can_cancel_user';
-  $items['user/%user/cancel']['access arguments'] = array(1);
+  // Dependency was added on chain_menu_access and, immediately after an update, the dependency may be missing.
+  // Make sure we don't render the whole website unusable in this case.
+  if (!module_exists('chain_menu_access')) {
+    return;
+  }
+  chain_menu_access_chain($items, 'user/%user', '_administerusersbyrole_check_access', array(1, 'edit'), TRUE);
+  chain_menu_access_chain($items, 'user/%user/edit', '_administerusersbyrole_check_access', array(1, 'edit'), TRUE);
+  chain_menu_access_chain($items, 'user/%user/cancel', '_administerusersbyrole_check_access', array(1, 'cancel'), TRUE);
   $items['user/%user/cancel']['page callback'] = 'administerusersbyrole_cancel_confirm_wrapper';
   $items['user/%user/cancel']['page arguments'] = array(1);
-  $items['admin/people']['access callback'] = '_administerusersbyrole_can_admin_people';
-  $items['admin/people/people']['access callback'] = '_administerusersbyrole_can_admin_people';
-  $items['admin/people/create']['access callback'] = '_administerusersbyrole_can_create_users';
+  chain_menu_access_chain($items, 'admin/people', 'user_access', array('access users overview'), TRUE);
   // The code in the user module to create a user relies on 'administer users' permission being set, so pass an argument to elevate permissions.
-  $items['admin/people/create']['access arguments'] = array('elevate');
+  chain_menu_access_chain($items, 'admin/people/create', '_administerusersbyrole_can_create_users', array('elevate'), TRUE);
 }
 
 /**
- * Determine access to the admin/people page.
+ * Implements hook_module_implements_alter().
+ *
+ * We need to be after the call from the entity module so our hook takes precedence.
  */
-function _administerusersbyrole_can_admin_people() {
-  // Access by this module permission or the one from the user module.
-  return user_access('access users overview') || user_access('administer users');
+function administerusersbyrole_module_implements_alter(&$implementations, $hook) {
+  if ($hook == 'entity_info_alter') {
+    // Move our hook implementation to the bottom.
+    $group = $implementations['administerusersbyrole'];
+    unset($implementations['administerusersbyrole']);
+    $implementations['administerusersbyrole'] = $group;
+  }
 }
 
 /**
- * Determine access to view the specified user account.
+ * Implements hook_views_default_views_alter().
  */
-function _administerusersbyrole_can_view_user($account) {
-  return user_view_access($account) || _administerusersbyrole_can_edit_user($account);
+function administerusersbyrole_views_default_views_alter(&$views) {
+  if (isset($views['admin_views_user'])) {
+    // Add a tag to the admin_views module users view.
+    $handler =& $views['admin_views_user']->display['default']->handler;
+    $handler->display->display_options['query']['options']['query_tags'] = array('administerusersbyrole_edit_access');
+  }
 }
 
 /**
- * Determine access to edit the specified user account.
+ * Implements hook_query_alter().
  */
-function _administerusersbyrole_can_edit_user($account) {
-  return user_edit_access($account) || _administerusersbyrole_check_access($account, 'edit');
-}
+function administerusersbyrole_query_alter(QueryAlterableInterface $query) {
+  // The tag administerusersbyrole_edit_access is used to indicate that we should filter out users where there isn't edit access.
+  if ($query->hasTag('administerusersbyrole_edit_access') && !user_access('administer users')) {
+    // Exclude the root user.
+    $query->condition('users.uid', 1, '<>');
 
-/**
- * Determine access to cancel the specified user account.
- */
-function _administerusersbyrole_can_cancel_user($account) {
-  return user_cancel_access($account) || _administerusersbyrole_check_access($account, 'cancel');
+    $roles = user_roles(TRUE);
+    foreach ($roles as $rid => $role) {
+      if (!user_access(_administerusersbyrole_build_perm_string($rid, 'edit'))) {
+        $exclude[$rid] = $rid;
+      }
+    }
+
+    if (isset($exclude[DRUPAL_AUTHENTICATED_RID])) {
+      // No permission unless there is a role.
+      $query->join('users_roles', 'users_roles_2', 'users_roles_2.uid=users.uid');
+      unset($exclude[DRUPAL_AUTHENTICATED_RID]);
+    }
+
+    // Do an "anti-join" on the excluded roles - add a left join and then check the results set is null.
+    // NB We don't have to check that $exclude might be empty, because it always contains the admin role.
+    $query->leftjoin('users_roles', 'users_roles', 'users_roles.uid=users.uid AND users_roles.rid IN (:exclude)', array(':exclude' => $exclude));
+    $query->isNull('users_roles.uid');
+  }
 }
 
 /**
@@ -93,8 +118,7 @@ function _administerusersbyrole_can_create_users($extra = '') {
     }
     return TRUE;
   }
-
-  return user_access('administer users');  
+  return FALSE;
 }
 
 /**
@@ -107,7 +131,7 @@ function administerusersbyrole_cancel_confirm_wrapper($account) {
   if (_administerusersbyrole_check_access($account, 'cancel')) {
     _administerusersbyrole_temp_administer_users();
   }
-  
+
   return(drupal_get_form('user_cancel_confirm_form', $account));
 }
 
@@ -116,14 +140,14 @@ function administerusersbyrole_cancel_confirm_wrapper($account) {
  */
 function administerusersbyrole_form_user_admin_account_alter(&$form, &$form_state, $form_id) {
   if (!user_access('administer users')) {
-    // Remove rows if user doesn't have permission to edit them. 
+    // Remove rows if user doesn't have permission to edit them.
     // This deliberately removes users with cancel access but not edit access.  Although it seems attractive to keep them,
-    // please DO NOT change this behaviour.  If we did, then users would be able to run bulk edits on other users 
+    // please DO NOT change this behaviour.  If we did, then users would be able to run bulk edits on other users
     // when having cancel permission but no edit permission.
     foreach ($form['accounts']['#options'] as $uid => $fields) {
       $account = user_load($uid);
       // This form exposes operations such as block account that shouldn't be available on a user's own account,
-      // so just check our own permissions. 
+      // so just check our own permissions.
       if (!_administerusersbyrole_check_access($account, 'edit')) {
         unset($form['accounts']['#options'][$uid]);
       }
@@ -134,7 +158,7 @@ function administerusersbyrole_form_user_admin_account_alter(&$form, &$form_stat
 /**
  * Implements hook_form_FORM_ID_alter().
  *
- * Check for cancel permissions.  The access control for the people admin page restricts the roles to those 
+ * Check for cancel permissions.  The access control for the people admin page restricts the roles to those
  * which we have _edit_ access rather than cancel access.
  */
 function administerusersbyrole_form_user_multiple_cancel_confirm_alter(&$form, &$form_state) {
@@ -142,7 +166,7 @@ function administerusersbyrole_form_user_multiple_cancel_confirm_alter(&$form, &
   foreach ($form_state['input']['accounts'] as $uid) {
     $account = user_load($uid);
     // This form bypasses checks and restrictions present when cancelling the user's own account,
-    // so just check our own permissions. 
+    // so just check our own permissions.
     if (_administerusersbyrole_check_access($account, 'cancel')) {
       $anyallowed = TRUE;
     }
@@ -169,15 +193,90 @@ function administerusersbyrole_form_user_profile_form_alter(&$form, &$form_state
   // We just check against this module's own permissions.
   // Don't check against the permissions in Drupal core, as those checks have already done and are subtle.
   // (For example, users can't necesarily change their own username and can't block their own account.)
-  
+
   if (_administerusersbyrole_check_access($account, 'edit')) {
     $form['account']['name']['#access'] = TRUE;
     $form['account']['status']['#access'] = TRUE;
   }
-  
+
   if (_administerusersbyrole_check_access($account, 'cancel')) {
     $form['actions']['cancel']['#access'] = TRUE;
   }
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ *
+ * Add a wrapper to elevate user permissions during AJAX submissions
+ */
+function administerusersbyrole_form_user_register_form_alter(&$form, &$form_state) {
+  $form_state['wrapper_callback'] = '_administerusersbyrole_user_profile_form_wrapper';
+}
+
+/**
+ * Handler to elevate user permissions when form is reloaded, as by an AJAX submission
+ */
+function _administerusersbyrole_user_profile_form_wrapper($form, &$form_state) {
+  _administerusersbyrole_can_create_users('elevate');
+  return $form;
+}
+
+/**
+ * Implements hook_entity_info_alter().
+ */
+function administerusersbyrole_entity_info_alter(&$entity_info) {
+  $entity_info['user']['access callback'] = 'administerusersbyrole_metadata_user_access';
+}
+
+/**
+ * Implements hook_entity_property_info_alter().
+ */
+function administerusersbyrole_entity_property_info_alter(&$info) {
+  $properties = &$info['user']['properties'];
+  $properties['name']['access callback'] = 'administerusersbyrole_metadata_user_properties_access';
+  $properties['mail']['access callback'] = 'administerusersbyrole_metadata_user_properties_access';
+  $properties['status']['access callback'] = 'administerusersbyrole_metadata_user_properties_access';
+  $properties['theme']['access callback'] = 'administerusersbyrole_metadata_user_properties_access';
+}
+
+/**
+ * Access callback for the user entity.
+ *
+ * NB the names of variables here are deliberately different from the ones used in the entity module.
+ * The reason is to be consistent with the rest of this module.  In the entity module:
+ * - Parameter 2 is named '$entity'.  Tntity is a user account, which is referred to as $account
+ *   throughout in this module, so we stick with that.
+ * - Parameter 3 is named '$account', meaning the account to check as, which is referred to as $check_as
+ *   in this module.
+ */
+function administerusersbyrole_metadata_user_access($op, $account = NULL, $check_as = NULL) {
+  // Call the base function.
+  if (entity_metadata_user_access($op, $account, $check_as)) {
+    return TRUE;
+  }
+
+  $convert = array('delete' => 'cancel', 'update' => 'edit');
+
+  if (isset($convert[$op])) {
+    // Call our own function.
+    $check_as = isset($check_as) ? $check_as : $GLOBALS['user'];
+    return _administerusersbyrole_check_access($account, $convert[$op], $check_as);
+  }
+
+  return FALSE;
+}
+
+/**
+ * Access callback for user entity properties.
+ */
+function administerusersbyrole_metadata_user_properties_access($op, $property, $account = NULL, $check_as = NULL) {
+  // Call the base function.
+  if (entity_metadata_user_properties_access($op, $property, $account, $check_as)) {
+    return TRUE;
+  }
+
+  $check_as = isset($check_as) ? $check_as : $GLOBALS['user'];
+  return _administerusersbyrole_check_access($account, 'edit', $check_as);
 }
 
 /**
@@ -186,7 +285,7 @@ function administerusersbyrole_form_user_profile_form_alter(&$form, &$form_state
  * This function checks the permissions of this module only.  The calling code needs
  * to check any Drupal core permissions that should also allow access.
  */
-function _administerusersbyrole_check_access($account, $op) {
+function _administerusersbyrole_check_access($account, $op, $check_as = NULL) {
   // Never allow uid 0 (anonymous) or 1 (master admin).
   if ($account->uid <= 1) {
     return FALSE;
@@ -203,7 +302,7 @@ function _administerusersbyrole_check_access($account, $op) {
     if (($rid === DRUPAL_AUTHENTICATED_RID) && (count($account->roles) > 1)) {
       continue;
     }
-    if (!user_access(_administerusersbyrole_build_perm_string($rid, $op))) {
+    if (!user_access(_administerusersbyrole_build_perm_string($rid, $op), $check_as)) {
       return FALSE;
     }
   }
