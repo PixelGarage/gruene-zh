@@ -1,0 +1,7 @@
+; $Id:
+name = Custom Functions
+description = Sammlung eigener PHP Funktionen
+package = Seiler Steinbach Custom Modules
+version = "7.x-1.0"
+core = "7.x"
+php = 5.2

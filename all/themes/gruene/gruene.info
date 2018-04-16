@@ -1,0 +1,8 @@
+core = 7.x
+description = This is the theme for Grüne Partei
+engine = phptemplate
+name = Grüne Partei
+base theme = tao
+
+stylesheets[all][] = css/main.css
+stylesheets[print][] = css/print.css

@@ -1,0 +1,69 @@
+/* CKEDITOR.CSS */
+
+@font-face {
+    font-family: 'sanuk';
+    src: url('../elements/fonts/sanuk/sanukcomp-webfont.eot');
+    src: url('../elements/fonts/sanuk/sanukcomp-webfont.eot?#iefix') format('embedded-opentype'),
+         url('../elements/fonts/sanuk/sanukcomp-webfont.woff') format('woff'),
+         url('../elements/fonts/sanuk/sanukcomp-webfont.ttf') format('truetype'),
+         url('../elements/fonts/sanuk/sanukcomp-webfont.svg#sanukcompregular') format('svg');
+    font-weight: normal;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'sanuk';
+    src: url('../elements/fonts/sanuk/sanukcomp-bold-webfont.eot');
+    src: url('../elements/fonts/sanuk/sanukcomp-bold-webfont.eot?#iefix') format('embedded-opentype'),
+         url('../elements/fonts/sanuk/sanukcomp-bold-webfont.woff') format('woff'),
+         url('../elements/fonts/sanuk/sanukcomp-bold-webfont.ttf') format('truetype'),
+         url('../elements/fonts/sanuk/sanukcomp-bold-webfont.svg#sanukcomp-boldregular') format('svg');
+    font-weight: bold;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'sanuk';
+    src: url('../elements/fonts/sanuk/sanukcomp-light-webfont.eot');
+    src: url('../elements/fonts/sanuk/sanukcomp-light-webfont.eot?#iefix') format('embedded-opentype'),
+         url('../elements/fonts/sanuk/sanukcomp-light-webfont.woff') format('woff'),
+         url('../elements/fonts/sanuk/sanukcomp-light-webfont.ttf') format('truetype'),
+         url('../elements/fonts/sanuk/sanukcomp-light-webfont.svg#sanukcomp-lightregular') format('svg');
+    font-weight: lighter;
+    font-style: normal;
+}
+
+.cke_editable {
+	font-family: 'sanuk', 'Helvetica', 'Arial', sans-serif;
+	color: rgb(0, 61, 31);
+	font-size: 14px;
+	line-height: 20px;
+}
+
+.cke_editable p a {
+	text-decoration: none;
+	color: rgb(81, 160, 37);
+}
+
+.cke_editable h3 {
+	font-weight: bold;
+	font-size: 18px;
+}
+
+.cke_editable ul {
+    padding-left: 16px;
+}
+
+.cke_editable ul li {
+    margin: 4px 0;
+}
+
+.cke_editable p.lead {
+    margin-top: 18px;
+    color: rgb(81, 160, 37);
+}
+
+.cke_editable table tr td {
+    vertical-align: top;
+    padding: 8px;
+}

@@ -1,0 +1,33 @@
+<?php
+
+  // get menu link children of current page. Assumes current page's path only exists in one menu
+  function mi_core_get_menu_children() {
+    $children = array();
+    $current = db_query("select menu_name, mlid from {menu_links} where link_path = :node", array(':node' => $_GET['q']));
+    
+    if($current) {
+		foreach ($current as $cu) {
+	      $result = db_query("select mlid, plid, link_path, link_title from {menu_links} where menu_name=:menu and plid=:mlid and hidden=0 order by weight, link_title", array(':menu' => $cu->menu_name, ':mlid' => $cu->mlid));
+	      foreach ($result as $row) {
+	        $children[] = $row;
+	      }
+	    }
+    }
+    return $children;
+    //return $current_info;
+  }
+
+  // get node IDs of child pages (based on menu children)
+  function mi_core_get_menu_children_nids() {
+    $nids = array();
+    $children = mi_core_get_menu_children();
+    foreach ($children as $value) {
+      if( substr( $value->link_path, 0, 5 ) == 'node/' ) {
+        $nids[] = substr( $value->link_path, 5 );
+      }
+    }
+    return $nids;
+    //return $children;
+  }
+
+?>
